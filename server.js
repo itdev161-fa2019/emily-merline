@@ -1,26 +1,27 @@
-import express from 'express';
-import connectDatabase from './config/db';
-import { check, validationResult } from 'express-validator';
-import cors from 'cors';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import config from 'config';
-import User from './models/User';
-import auth from './middleware/auth';
+import express from 'express'
+import connectDatabase from './config/db'
+import { check, validationResult } from 'express-validator'
+import cors from 'cors'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import config from 'config'
+import User from './models/User'
+import Post from './models/Post'
+import auth from './middleware/auth'
 
 // Initialize express application
-const app = express();
+const app = express()
 
 //Connect database
-connectDatabase();
+connectDatabase()
 
 //Configure Middleware
-app.use(express.json({ extended: false }));
+app.use(express.json({ extended: false }))
 app.use(
     cors({
         origin: 'http://localhost:3000'
     })
-);
+)
 
 // API endpoints
 /**
@@ -29,7 +30,7 @@ app.use(
  */
 app.get('/', (req, res) =>
     res.send('http get request sent to root api endpoint')
-);
+)
 /**
  * @route POST api/users
  * @desc Register user
@@ -47,18 +48,18 @@ app.post(
             ).isLength({ min: 6})
     ],
     async (req, res) => {
-        const errors = validationResult(req);
+        const errors = validationResult(req)
         if (!errors.isEmpty()) {
-            return res.status(422).json({ errors: errors.array() });
+            return res.status(422).json({ errors: errors.array() })
         } else {
-            const { name, email, password} = req.body;
+            const { name, email, password} = req.body
             try {
                 //Check if user exists
-                let user = await User.findOne({ email: email });
+                let user = await User.findOne({ email: email })
                 if (user) {
                     return res
                         .status(400)
-                        .json({ errors: [{ msg: 'User already exists'}] });
+                        .json({ errors: [{ msg: 'User already exists'}] })
                 }
 
                 //Create a new user
@@ -66,23 +67,23 @@ app.post(
                     name: name,
                     email: email,
                     password: password
-                });
+                })
 
                 //Encrypt the password
-                const salt = await bcrypt.genSalt(10);
-                user.password = await bcrypt.hash(password, salt);
+                const salt = await bcrypt.genSalt(10)
+                user.password = await bcrypt.hash(password, salt)
 
                 //Save to the db and return
-                await user.save();
+                await user.save()
 
                 // Generate and return a JWT token
-                returnToken(user, res);
+                returnToken(user, res)
             } catch (error) {
-                res.status(500).send('Server error');
+                res.status(500).send('Server error')
             }
         }
     }
-);
+)
 
 /**
  * @route GET api/auth
@@ -90,12 +91,12 @@ app.post(
  */
 app.get('/api/auth', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id)
         res.status(200).json(user);
     } catch (error) {
-        res.status(500).send('Unknown server error');
+        res.status(500).send('Unknown server error')
     }
-});
+})
 
 /**
  * @route POST api/login
@@ -108,57 +109,98 @@ app.post(
         check('password', 'A password is required').exists()
     ],
     async (req, res) => {
-        const errors = validationResult(req);
+        const errors = validationResult(req)
         if(!errors.isEmpty()) {
-            return res.status(422).json({ errors: errors.array() });
+            return res.status(422).json({ errors: errors.array() })
         } else {
-            const { email, password } = req.body;
+            const { email, password } = req.body
             try {
                 //Check if user exists
-                let user = await User.findOne({ email: email });
+                let user = await User.findOne({ email: email })
                 if (!user) {
                     return res
                         .status(400)
-                        .json({ errors: [{ msg: 'Invalid email or password' }] });
+                        .json({ errors: [{ msg: 'Invalid email or password' }] })
                 }
                 
                 //Check password
-                const match = await bcrypt.compare(password, user.password);
+                const match = await bcrypt.compare(password, user.password)
                 if (!match) {
                     return res
                         .status(400)
-                        .json({ errors: [{ msg: 'Invalid email or password' }] });
+                        .json({ errors: [{ msg: 'Invalid email or password' }] })
                 }
 
                 //Generate and return a JWT token
-                returnToken(user, res);
+                returnToken(user, res)
             } catch (error) {
-                res.status(500).send('Server error');
+                res.status(500).send('Server error')
             }
         }
+})
 
-});
+app.post(
+    '/api/posts',
+    [
+        auth,
+        [
+            check('title', 'Title text is required')
+                .not()
+                .isEmpty(),
+            check('body', 'Body text is required')
+                .not()
+                .isEmpty()
+        ]
+    ],
+    async (req, res) => {
+        const errors = validationResult(req)
+        if (!errors.isEmpty()) {
+            res.status(400).json({ errors: error.array() })
+        } else {
+            const { title, body } = req.body
+            try {
+                //Get the user who created the post
+                const user = await User.findById(req.user.id)
+
+                //Create a new post
+                const post = new Post({
+                    user: user.id,
+                    title: title,
+                    body: body
+                })
+
+                //Save to the db and return
+                await post.save()
+
+                res.json(post)
+            } catch (error) {
+                console.error(error)
+                res.status(500).send('Server error')
+            }
+        }
+    }
+)
 
 const returnToken = (user, res) => {
     const payload = {
         user: {
             id: user.id
         }
-    };
+    }
 
     jwt.sign(
         payload,
         config.get('jwtSecret'),
         { expiresIn: '10hr' },
         (err, token) => {
-            if (err) throw err;
-            res.json({ token: token });
+            if (err) throw err
+            res.json({ token: token })
         }
-    );
-};
+    )
+}
 
 
 // Connection listener
 
-const port = 5000;
-app.listen(port, () => console.log(`Express server running on port ${port}`));
+const port = 5000
+app.listen(port, () => console.log(`Express server running on port ${port}`))
