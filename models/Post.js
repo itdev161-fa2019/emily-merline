@@ -1,6 +1,6 @@
 import mongoose from 'mongoose'
 
-const PostSchema = new mongoose.SchemaType({
+const PostSchema = new mongoose.Schema({
     user: {
         type: 'ObjectId',
         ref: 'User'
